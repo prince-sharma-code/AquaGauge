@@ -43,7 +43,7 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.
 const API = {
   incidents: '/api/incidents',
   communityReports: '/api/community-reports',
-  analyzeImage: '/api/analyze-image',
+  analyzeImage: '/api/detect',
   weather: '/api/weather',
 }
 
@@ -594,10 +594,26 @@ function App() {
     }
 
     try {
-      const formData = new FormData()
-      formData.append('image', file)
-      const data = await apiRequest(API.analyzeImage, { method: 'POST', body: formData })
-      setAnalysisResult(data)
+      const data = await apiRequest(API.analyzeImage, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_id: file.name }),
+    })
+      setAnalysisResult({
+        analysis_source: data.source === 'PRECOMPUTED_DEMO'
+          ? 'PRECOMPUTED_DEMO_FIXTURE'
+          : data.source,
+        model_inference: data.model_info?.fallback_active !== true,
+        result: {
+          status: data.source ?? 'UNKNOWN',
+          image_dimensions: data.image_dimensions,
+          detections: data.detections ?? [],
+          water_boundary: data.water_boundary,
+          water_region: {
+            detected: Boolean(data.water_boundary),
+          },
+        },
+      })
     } catch (error) {
       setUploadError(
         `Image API unavailable: ${error instanceof Error ? error.message : 'Request failed'}. The image has not been analysed.`,
@@ -996,9 +1012,10 @@ function App() {
                     </p>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
-                    <ResultCard label="Water detected" value={
-                    parsedAnalysis?.result?.water_region?.detected === true ? 'Yes' :
-                    parsedAnalysis?.result?.water_region?.detected === false ? 'No' : 'Unavailable'
+                    <ResultCard label="Water boundary" value={
+                      parsedAnalysis?.result?.water_region?.detected === true
+                        ? 'Proposed — review required'
+                        : 'Unavailable'
                     } />
                     <ResultCard label="Estimated depth" value="Not estimated" />
                     <ResultCard label="Flood risk" value="Not classified" />
