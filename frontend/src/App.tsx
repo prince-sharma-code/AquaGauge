@@ -2,8 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, FormEvent, ReactNode } from 'react'
 import {
-  Activity, AlertTriangle, BarChart3, Bell, CheckCircle2, 
-  CloudRain, Download, Droplets, FileImage, LayoutDashboard, MapPin,
+  Activity, AlertTriangle, Bell, CheckCircle2,
+  CloudRain, Droplets, FileImage, LayoutDashboard, MapPin,
   Menu, RefreshCw, Settings, ShieldCheck, Upload, Waves, X, Zap,
   Satellite, Database, Users, ImagePlus, Info, 
   Thermometer, Wind, Cloud, Gauge, Wifi, WifiOff, Send, Filter,
@@ -227,8 +227,21 @@ function App() {
   const [imageSize, setImageSize] = useState(0)
   const [imageType, setImageType] = useState('')
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [analysisComplete, setAnalysisComplete] = useState(false)
+  const [analysisResult, setAnalysisResult] = useState<unknown>(null)
   const [uploadError, setUploadError] = useState('')
+  const parsedAnalysis = analysisResult as {
+  analysis_source?: string
+  model_inference?: boolean
+  result?: {
+    status?: string
+    detections?: Array<{ confidence?: number; [key: string]: unknown }>
+    water_region?: {
+      detected?: boolean
+      confidence?: number
+      area_percentage?: number
+    }
+  }
+} | null
   const [activeSection, setActiveSection] = useState('overview')
   const [currentTime, setCurrentTime] = useState(new Date())
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -539,7 +552,6 @@ function App() {
     const file = event.target.files?.[0]
     if (!file) return
     setUploadError('')
-    setAnalysisComplete(false)
 
     if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
       setUploadError('Unsupported file type. Choose a JPG, PNG or WebP image.')
@@ -572,13 +584,11 @@ function App() {
     }
 
     setIsAnalyzing(true)
-    setAnalysisComplete(false)
     setUploadError('')
 
     if (!API_BASE_URL) {
       window.setTimeout(() => {
         setIsAnalyzing(false)
-        setAnalysisComplete(true)
       }, 900)
       return
     }
@@ -586,8 +596,8 @@ function App() {
     try {
       const formData = new FormData()
       formData.append('image', file)
-      await apiRequest(API.analyzeImage, { method: 'POST', body: formData })
-      setAnalysisComplete(true)
+      const data = await apiRequest(API.analyzeImage, { method: 'POST', body: formData })
+      setAnalysisResult(data)
     } catch (error) {
       setUploadError(
         `Image API unavailable: ${error instanceof Error ? error.message : 'Request failed'}. The image has not been analysed.`,
@@ -603,41 +613,10 @@ function App() {
     setImageName('')
     setImageSize(0)
     setImageType('')
-    setAnalysisComplete(false)
     setIsAnalyzing(false)
     setUploadError('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
-
-  const handleDownloadReport = () => {
-    if (!analysisComplete) return
-    const report = [
-      'AquaGauge Flood Image Analysis Report',
-      '-------------------------------------',
-      `Generated: ${new Date().toLocaleString()}`,
-      `Image: ${imageName}`,
-      `Image type: ${imageType}`,
-      `Image size: ${(imageSize / (1024 * 1024)).toFixed(2)} MB`,
-      '',
-      API_BASE_URL
-        ? 'Analysis request sent to configured backend. Review backend response for actual results.'
-        : 'No AI backend configured. This was only a frontend demonstration.',
-      'Water detection: Not displayed by this frontend version.',
-      'Estimated water depth: Not available.',
-      'Flood risk classification: Not available.',
-      'Confidence score: Not available.',
-      '',
-      'Do not use this report as an emergency assessment.',
-    ].join('\n')
-    const blob = new Blob([report], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'aquagauge-image-analysis-report.txt'
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
   const allIncidents = useMemo<Incident[]>(() => {
     const local: Incident[] = communityReports.map(report => ({
       id: report.id,
@@ -1000,15 +979,63 @@ function App() {
                   {!selectedImage ? <button onClick={() => fileInputRef.current?.click()} className="flex min-h-64 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-[#B9A8E8] bg-[#F6F2FA] p-6 text-center transition hover:border-[#287E83]"><div className="mb-4 rounded-2xl bg-[#E9E2F5] p-4"><ImagePlus className="h-8 w-8 text-[#7664A8]" /></div><p className="font-bold">Click to upload an image</p><p className="mt-2 text-xs text-[#71808A]">JPG, PNG or WebP · Maximum 10 MB</p></button> : <div className="space-y-3"><div className="relative overflow-hidden rounded-xl border border-[#E7E0E9] bg-[#F0EBF0]"><img src={selectedImage} alt="Selected flood observation" className="max-h-72 w-full object-contain" /><button onClick={handleReset} className="absolute right-3 top-3 rounded-lg bg-[#244A69] p-2 text-white" aria-label="Remove image"><X size={17} /></button></div><div className="rounded-xl border border-[#E7E0E9] bg-[#FAF8FB] p-3"><p className="truncate text-sm font-semibold">{imageName}</p><p className="mt-2 text-xs text-[#71808A]">{(imageSize / (1024 * 1024)).toFixed(2)} MB · {imageType.replace('image/', '').toUpperCase()}</p></div></div>}
                   {uploadError && <div role="alert" className="mt-4 rounded-xl border border-[#F0CFC7] bg-[#FDF0EC] p-3 text-sm text-[#B34E43]">{uploadError}</div>}
                   <div className="mt-5 flex flex-wrap gap-3"><button onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 rounded-xl border border-[#DCD3E4] px-4 py-2.5 text-sm font-semibold"><Upload size={16} />{selectedImage ? 'Change Image' : 'Choose Image'}</button><button onClick={() => void handleAnalyze()} disabled={!selectedImage || isAnalyzing} className="flex items-center gap-2 rounded-xl bg-[#287E83] px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40">{isAnalyzing ? <RefreshCw size={16} className="animate-spin" /> : <Zap size={16} />}{isAnalyzing ? 'Processing...' : 'Analyze Image'}</button></div>
-                  <p className="mt-4 text-xs leading-5 text-[#71808A]">Without a configured backend, the interface only demonstrates upload and preview. The selected image is not analysed by a model.</p>
+                  <p className="mt-4 text-xs leading-5 text-[#71808A]">Images are submitted to the configured analysis API. Results may use precomputed demo fixtures; live AI inference is not currently enabled.</p>
                 </div>
 
                 <div className={`${cardStyle} p-5`}>
-                  <div className="mb-5 flex items-center gap-2"><div className="rounded-lg bg-[#E9E2F5] p-2"><BarChart3 className="text-[#7664A8]" size={19} /></div><h3 className="font-bold">Analysis Results</h3></div>
-                  {!analysisComplete ? <div className="flex min-h-64 flex-col items-center justify-center text-center"><div className="mb-4 rounded-2xl bg-[#E9E2F5] p-4"><FileImage className="h-8 w-8 text-[#7664A8]" /></div><p className="font-semibold">{isAnalyzing ? 'Sending image...' : 'No analysis available yet'}</p><p className="mt-2 max-w-xs text-xs leading-5 text-[#71808A]">Upload an image and select Analyze Image to begin.</p></div> : <div className="space-y-4"><div className="flex items-center gap-2 rounded-xl border border-[#B8DED8] bg-[#DCEFEB] p-3 text-sm font-semibold text-[#287E83]"><CheckCircle2 size={18} />{API_BASE_URL ? 'Analysis endpoint responded successfully' : 'Image preview completed · no AI analysis performed'}</div><div className="rounded-xl border border-[#F0DEBC] bg-[#FFF6E7] p-4"><p className="text-sm font-bold text-[#8A682F]">Model result fields not mapped</p><p className="mt-1 text-xs leading-5 text-[#8A682F]">The backend response format must be confirmed before displaying detection, depth, risk or confidence results.</p></div><div className="grid grid-cols-2 gap-3"><ResultCard label="Water detected" value="Unavailable" /><ResultCard label="Estimated depth" value="Unavailable" /><ResultCard label="Flood risk" value="Unclassified" /><ResultCard label="Confidence" value="Unavailable" /></div><button onClick={handleDownloadReport} className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#DCD3E4] px-4 py-3 text-sm font-bold"><Download size={17} />Download Analysis Status Report</button></div>}
-                </div>
+                  <div className="rounded-xl border border-[#F0DEBC] bg-[#FFF6E7] p-4">
+                    <p className="text-sm font-bold text-[#8A682F]">
+                      {parsedAnalysis?.analysis_source === 'PRECOMPUTED_DEMO_FIXTURE'
+                        ? 'Precomputed Demo Result'
+                        : 'Analysis Status'}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-[#8A682F]">
+                      {parsedAnalysis?.model_inference === false
+                        ? 'This result uses a precomputed fixture. Live AI model inference was not performed.'
+                        : `Pipeline status: ${parsedAnalysis?.result?.status ?? 'Unavailable'}`}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <ResultCard label="Water detected" value={
+                    parsedAnalysis?.result?.water_region?.detected === true ? 'Yes' :
+                    parsedAnalysis?.result?.water_region?.detected === false ? 'No' : 'Unavailable'
+                    } />
+                    <ResultCard label="Estimated depth" value="Not estimated" />
+                    <ResultCard label="Flood risk" value="Not classified" />
+                    <ResultCard label="Water confidence" value={
+                    parsedAnalysis?.result?.water_region?.confidence != null
+                    ? `${(parsedAnalysis.result.water_region.confidence * 100).toFixed(0)}%`
+                    : 'Unavailable'
+                    } />
+                  </div>
+              <div className="mt-4 rounded-xl border border-[#E7E0E9] bg-[#FAF8FB] p-4">
+                <p className="text-sm font-bold text-[#244A69]">
+                Vehicle Detections
+                </p>
+                {parsedAnalysis?.result?.detections?.length ? (
+                  <div className="mt-3 space-y-2">
+                    {parsedAnalysis.result.detections.map((vehicle, index) => (
+                      <div key={index} className="flex justify-between text-sm">
+                        <span>
+                          {String(vehicle.class_name ?? 'Vehicle')}
+                        </span>
+                        <span className="font-semibold text-[#287E83]">
+                          {vehicle.confidence != null
+                            ? `${(vehicle.confidence * 100).toFixed(0)}% confidence`
+                            : 'Confidence unavailable'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-xs text-[#71808A]">
+                    No vehicle detections available.
+                  </p>
+                )}
               </div>
               <div className="rounded-2xl border border-[#B9A8E8] bg-[#F6F2FA] p-4"><div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 shrink-0 text-[#7664A8]" size={20} /><div><p className="text-sm font-bold text-[#51447C]">Responsible reporting</p><p className="mt-1 text-xs leading-5 text-[#71808A]">An uploaded image is an observation, not proof of a confirmed flood. Depth and risk require a validated analysis model.</p></div></div></div>
+              </div>
+            </div>
             </section>
             )}
 
