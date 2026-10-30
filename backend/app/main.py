@@ -60,6 +60,7 @@ if not OPERATOR_API_KEY:
     )
 import secrets
 from .vision import VisionPipeline
+from .vision.fixtures import get_demo_fixture
 
 vision_pipeline = None
 vision_status = "UNAVAILABLE"
@@ -131,7 +132,26 @@ def health():
             "precomputed_demo_available": True,
         },
     }
+@app.get(
+    "/api/vision/fixtures/{image_id}",
+    summary="Retrieve a precomputed computer vision demo result",
+)
+def get_vision_fixture(image_id: str):
+    fixture = get_demo_fixture(image_id)
 
+    if fixture is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Vision demo fixture '{image_id}' not found.",
+        )
+
+    return {
+        "source": "PRECOMPUTED_DEMO",
+        "depth_calibration": "NOT_PROVIDED",
+        "physical_water_depth_cm": None,
+        "depth_status": "ABSTAIN / REVIEW",
+        "fixture": fixture.model_dump(),
+    }
 
 @app.post(
     "/api/estimate",

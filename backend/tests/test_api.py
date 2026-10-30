@@ -185,6 +185,24 @@ def test_detect_endpoint_bundled_preset():
     assert len(data["detections"]) > 0
     assert data["water_boundary"]["status"] == "PROPOSED"
 
+def test_vision_fixture_endpoint_returns_precomputed_result():
+    response = client.get(
+        "/api/vision/fixtures/flooded_vehicle_underpass.jpg"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["source"] == "PRECOMPUTED_DEMO"
+    assert data["depth_calibration"] == "NOT_PROVIDED"
+    assert data["physical_water_depth_cm"] is None
+    assert data["depth_status"] == "ABSTAIN / REVIEW"
+
+    fixture = data["fixture"]
+    assert fixture["image_id"] == "flooded_vehicle_underpass.jpg"
+    assert len(fixture["detections"]) == 1
+    assert fixture["water_region"]["detected"] is True
 
 def test_detect_endpoint_unsupported_image_returns_404():
     res = client.post("/api/detect", json={"image_id": "arbitrary_unseen.jpg"})
