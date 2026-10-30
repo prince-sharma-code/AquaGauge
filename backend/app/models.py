@@ -262,3 +262,6 @@ class FloodReportResponse(BaseModel):
 
     submitted_at: str
 
+class FloodReportVerificationRequest(BaseModel):
+    verification_status: Literal["VERIFIED", "REJECTED"]
+

@@ -8,6 +8,7 @@ Tests:
 - /api/detect bundled demo images (PRECOMPUTED_DEMO) and 501 for arbitrary file upload
 - /api/incidents creation, retrieval, abstention rejection (409), and duplicate prevention (409)
 """
+import os
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
@@ -383,3 +384,64 @@ def test_get_flood_reports():
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+def test_verify_flood_report():
+    """Verify that an operator can mark a report as verified."""
+
+    create_response = client.post(
+        "/api/reports",
+        json={
+            "report_type": "MANUAL",
+            "location": "Verification Test Village",
+            "description": "Testing report verification",
+        },
+    )
+
+    assert create_response.status_code == 201
+    report_id = create_response.json()["report_id"]
+
+    response = client.patch(
+        f"/api/reports/{report_id}/verification",
+        json={"verification_status": "VERIFIED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "VERIFIED"
+
+
+def test_reject_flood_report():
+    """Verify that a report can be marked as rejected."""
+
+    create_response = client.post(
+        "/api/reports",
+        json={
+            "report_type": "COMMUNITY",
+            "location": "Rejection Test Village",
+            "description": "Testing report rejection",
+        },
+    )
+
+    assert create_response.status_code == 201
+    report_id = create_response.json()["report_id"]
+
+    response = client.patch(
+        f"/api/reports/{report_id}/verification",
+        json={"verification_status": "REJECTED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "REJECTED"
+
+
+def test_verify_nonexistent_flood_report():
+    """Verify that an unknown report ID returns HTTP 404."""
+
+    response = client.patch(
+        "/api/reports/UNKNOWN-REPORT/verification",
+        json={"verification_status": "VERIFIED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 404

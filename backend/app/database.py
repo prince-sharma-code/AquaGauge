@@ -324,3 +324,38 @@ def get_flood_reports(limit: int = 100) -> List[FloodReportResponse]:
         FloodReportResponse(**dict(row))
         for row in rows
     ]
+
+def verify_flood_report(
+    report_id: str,
+    verification_status: str,
+) -> Optional[FloodReportResponse]:
+    """Update the verification status of an existing flood report."""
+
+    if verification_status not in ("VERIFIED", "REJECTED"):
+        raise ValueError("Invalid verification status.")
+
+    init_db()
+
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            UPDATE reports
+            SET verification_status = ?
+            WHERE report_id = ?;
+            """,
+            (verification_status, report_id),
+        )
+
+        row = conn.execute(
+            """
+            SELECT *
+            FROM reports
+            WHERE report_id = ?;
+            """,
+            (report_id,),
+        ).fetchone()
+
+    if row is None:
+        return None
+
+    return FloodReportResponse(**dict(row))

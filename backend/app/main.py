@@ -9,7 +9,7 @@ Adheres strictly to the AquaGauge REST API Contract v1.0-FINAL:
 from typing import List, Optional, Union
 import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status, Query, Request
+from fastapi import FastAPI, HTTPException, status, Query, Request, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
 from .depth_estimator import estimate_depth_cm
@@ -32,6 +32,7 @@ from .models import (
     WaterBoundary,
     FloodReportCreate,
     FloodReportResponse,
+    FloodReportVerificationRequest,
 )
 
 from .database import (
@@ -42,9 +43,33 @@ from .database import (
     AbstainedIncidentError,
     create_flood_report,
     get_flood_reports,
+    verify_flood_report,
 )
 
 from .route_service import get_corridor_metadata, get_route_detour
+import os
+
+
+OPERATOR_API_KEY = os.getenv("AQUAGAUGE_OPERATOR_API_KEY")
+
+if not OPERATOR_API_KEY:
+    raise RuntimeError(
+        "AQUAGAUGE_OPERATOR_API_KEY environment variable must be set."
+    )
+import secrets
+
+
+def require_operator_api_key(
+    x_operator_api_key: Optional[str] = Header(default=None),
+):
+    if not x_operator_api_key or not secrets.compare_digest(
+        x_operator_api_key,
+        OPERATOR_API_KEY,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing operator API key.",
+        )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -234,6 +259,29 @@ def list_flood_reports(
     limit: int = Query(default=50, ge=1, le=100)
 ):
     return get_flood_reports(limit=limit)
+
+@app.patch(
+    "/api/reports/{report_id}/verification",
+    response_model=FloodReportResponse,
+    summary="Verify or reject a flood report",
+)
+def update_report_verification(
+    report_id: str,
+    payload: FloodReportVerificationRequest,
+    operator_key: None = Depends(require_operator_api_key),
+):
+    report = verify_flood_report(
+        report_id=report_id,
+        verification_status=payload.verification_status,
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Flood report '{report_id}' not found.",
+        )
+
+    return report
 
 # Allowlist for starter-kit bundled demo images
 _DEMO_PRESETS = {
