@@ -192,3 +192,76 @@ class DetectResponse(BaseModel):
 
 class DetectJSONRequest(BaseModel):
     image_id: str = Field(description="Preloaded demo asset key from assets/demo_images/.")
+
+
+# ==========================================
+# MULTI-SOURCE FLOOD REPORT MODELS
+# ==========================================
+
+ReportType = Literal[
+    "IMAGE",
+    "MANUAL",
+    "COMMUNITY",
+    "RAINFALL",
+    "WATER_LEVEL",
+    "SATELLITE",
+    "SMS",
+    "OFFLINE"
+]
+
+ReportVerificationStatus = Literal[
+    "UNVERIFIED",
+    "VERIFIED",
+    "REJECTED"
+]
+
+
+class FloodReportCreate(BaseModel):
+    report_type: ReportType
+
+    location: str = Field(min_length=2, max_length=250)
+
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
+
+    description: str = Field(min_length=3, max_length=2000)
+
+    reported_severity: Optional[
+        Literal["LOW", "MEDIUM", "HIGH", "UNKNOWN"]
+    ] = "UNKNOWN"
+
+    image_id: Optional[str] = None
+
+    water_level_cm: Optional[float] = Field(default=None, ge=0)
+
+    rainfall_mm: Optional[float] = Field(default=None, ge=0)
+
+    observed_at: Optional[str] = None
+
+    reporter_notes: Optional[str] = Field(default=None, max_length=1000)
+
+
+class FloodReportResponse(BaseModel):
+    report_id: str
+    report_type: ReportType
+    location: str
+
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+
+    description: str
+    reported_severity: str
+    verification_status: ReportVerificationStatus
+
+    image_id: Optional[str] = None
+    water_level_cm: Optional[float] = None
+    rainfall_mm: Optional[float] = None
+
+    observed_at: Optional[str] = None
+    reporter_notes: Optional[str] = None
+
+    submitted_at: str
+
+class FloodReportVerificationRequest(BaseModel):
+    verification_status: Literal["VERIFIED", "REJECTED"]
+

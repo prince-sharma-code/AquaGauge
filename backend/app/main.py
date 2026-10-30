@@ -8,8 +8,10 @@ Adheres strictly to the AquaGauge REST API Contract v1.0-FINAL:
 """
 from typing import List, Optional, Union
 import json
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status, Query, Request
+from fastapi import FastAPI, HTTPException, status, Query, Request, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from .depth_estimator import estimate_depth_cm
@@ -30,20 +32,71 @@ from .models import (
     BoundingBoxPixels,
     SuggestedReference,
     WaterBoundary,
+    FloodReportCreate,
+    FloodReportResponse,
+    FloodReportVerificationRequest,
 )
+
 from .database import (
     init_db,
     create_incident_atomic,
     get_recent_incidents,
     DuplicateIncidentError,
     AbstainedIncidentError,
+    create_flood_report,
+    get_flood_reports,
+    verify_flood_report,
 )
+
 from .route_service import get_corridor_metadata, get_route_detour
+import os
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
+
+OPERATOR_API_KEY = os.getenv("AQUAGAUGE_OPERATOR_API_KEY")
+
+if not OPERATOR_API_KEY:
+    raise RuntimeError(
+        "AQUAGAUGE_OPERATOR_API_KEY environment variable must be set."
+    )
+import secrets
+from .vision import VisionPipeline
+from .vision.fixtures import get_demo_fixture
+
+vision_pipeline = None
+vision_status = "UNAVAILABLE"
+vision_error = None
+
+
+def require_operator_api_key(
+    x_operator_api_key: Optional[str] = Header(default=None),
+):
+    if not x_operator_api_key or not secrets.compare_digest(
+        x_operator_api_key,
+        OPERATOR_API_KEY,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing operator API key.",
+        )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize SQLite database before serving requests
+    global vision_pipeline, vision_status, vision_error
+
+    # Initialize SQLite database
     init_db()
+
+    # Initialize vision without preventing API startup
+    try:
+        vision_pipeline = VisionPipeline()
+        vision_status = "AVAILABLE"
+        vision_error = None
+    except Exception as exc:
+        vision_pipeline = None
+        vision_status = "UNAVAILABLE"
+        vision_error = str(exc)
+        print(f"Vision pipeline unavailable: {exc}")
+
     yield
 
 app = FastAPI(
@@ -73,8 +126,32 @@ def health():
         "service": "aquagauge-hackathon-api",
         "mode": "prototype",
         "version": "0.1.0",
+        "vision": {
+            "status": vision_status,
+            "error": vision_error,
+            "precomputed_demo_available": True,
+        },
     }
+@app.get(
+    "/api/vision/fixtures/{image_id}",
+    summary="Retrieve a precomputed computer vision demo result",
+)
+def get_vision_fixture(image_id: str):
+    fixture = get_demo_fixture(image_id)
 
+    if fixture is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Vision demo fixture '{image_id}' not found.",
+        )
+
+    return {
+        "source": "PRECOMPUTED_DEMO",
+        "depth_calibration": "NOT_PROVIDED",
+        "physical_water_depth_cm": None,
+        "depth_status": "ABSTAIN / REVIEW",
+        "fixture": fixture.model_dump(),
+    }
 
 @app.post(
     "/api/estimate",
@@ -209,7 +286,48 @@ def create_incident(payload: IncidentCreateRequest):
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         )
+@app.post(
+    "/api/reports",
+    response_model=FloodReportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a multi-source flood report",
+)
+def submit_flood_report(payload: FloodReportCreate):
+    return create_flood_report(request=payload)
 
+
+@app.get(
+    "/api/reports",
+    response_model=List[FloodReportResponse],
+    summary="Retrieve recent multi-source flood reports",
+)
+def list_flood_reports(
+    limit: int = Query(default=50, ge=1, le=100)
+):
+    return get_flood_reports(limit=limit)
+
+@app.patch(
+    "/api/reports/{report_id}/verification",
+    response_model=FloodReportResponse,
+    summary="Verify or reject a flood report",
+)
+def update_report_verification(
+    report_id: str,
+    payload: FloodReportVerificationRequest,
+    operator_key: None = Depends(require_operator_api_key),
+):
+    report = verify_flood_report(
+        report_id=report_id,
+        verification_status=payload.verification_status,
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Flood report '{report_id}' not found.",
+        )
+
+    return report
 
 # Allowlist for starter-kit bundled demo images
 _DEMO_PRESETS = {
@@ -270,10 +388,34 @@ async def detect(request: Request):
     if "multipart/form-data" in content_type:
         form = await request.form()
         uploaded_file = form.get("file")
-        if not uploaded_file:
+
+        if uploaded_file is None or not hasattr(uploaded_file, "read"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Form field 'file' must contain an uploaded image.",
+            )
+
+        file_bytes = await uploaded_file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+
+        if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Image exceeds the 10 MB upload limit.",
+            )
+
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded image is empty.",
+            )
+        try:
+            image = Image.open(BytesIO(file_bytes))
+            image.load()
+            image = image.convert("RGB")
+        except (UnidentifiedImageError, OSError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid image.",
             )
         if getattr(uploaded_file, "content_type", "") not in ["image/jpeg", "image/png", "image/webp"]:
             raise HTTPException(

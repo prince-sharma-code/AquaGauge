@@ -8,6 +8,7 @@ Tests:
 - /api/detect bundled demo images (PRECOMPUTED_DEMO) and 501 for arbitrary file upload
 - /api/incidents creation, retrieval, abstention rejection (409), and duplicate prevention (409)
 """
+import os
 import pytest
 from fastapi.testclient import TestClient
 from backend.app.main import app
@@ -184,18 +185,35 @@ def test_detect_endpoint_bundled_preset():
     assert len(data["detections"]) > 0
     assert data["water_boundary"]["status"] == "PROPOSED"
 
+def test_vision_fixture_endpoint_returns_precomputed_result():
+    response = client.get(
+        "/api/vision/fixtures/flooded_vehicle_underpass.jpg"
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+
+    assert data["source"] == "PRECOMPUTED_DEMO"
+    assert data["depth_calibration"] == "NOT_PROVIDED"
+    assert data["physical_water_depth_cm"] is None
+    assert data["depth_status"] == "ABSTAIN / REVIEW"
+
+    fixture = data["fixture"]
+    assert fixture["image_id"] == "flooded_vehicle_underpass.jpg"
+    assert len(fixture["detections"]) == 1
+    assert fixture["water_region"]["detected"] is True
 
 def test_detect_endpoint_unsupported_image_returns_404():
     res = client.post("/api/detect", json={"image_id": "arbitrary_unseen.jpg"})
     assert res.status_code == 404
 
-
-def test_detect_endpoint_upload_returns_501():
+def test_detect_endpoint_upload_rejects_invalid_image():
     files = {"file": ("test.png", b"fakebytes", "image/png")}
     res = client.post("/api/detect", files=files)
-    assert res.status_code == 501
-    assert "Live vision model inference" in res.json()["detail"]
 
+    assert res.status_code == 400
+    assert res.json()["detail"] == "Uploaded file is not a valid image."
 
 def test_incident_creation_and_retrieval_flow():
     # 1. Produce valid estimate
@@ -353,4 +371,94 @@ def test_estimate_session_expiry_60_minutes():
     res = client.post("/api/incidents", json=inc_payload)
     assert res.status_code == 404
     assert "not found or expired" in res.json()["detail"]
+def test_create_manual_flood_report():
+    """Verify that a manual flood report can be submitted successfully."""
 
+    payload = {
+        "report_type": "MANUAL",
+        "location": "Test Village",
+        "description": "Flooding reported near the village road",
+        "reported_severity": "HIGH",
+        "latitude": 28.6139,
+        "longitude": 77.2090,
+    }
+
+    response = client.post("/api/reports", json=payload)
+
+    assert response.status_code == 201
+
+    data = response.json()
+    assert data["report_type"] == "MANUAL"
+    assert data["location"] == "Test Village"
+    assert data["verification_status"] == "UNVERIFIED"
+    assert data["reported_severity"] == "HIGH"
+
+
+def test_get_flood_reports():
+    """Verify that submitted flood reports can be retrieved."""
+
+    response = client.get("/api/reports")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)
+
+def test_verify_flood_report():
+    """Verify that an operator can mark a report as verified."""
+
+    create_response = client.post(
+        "/api/reports",
+        json={
+            "report_type": "MANUAL",
+            "location": "Verification Test Village",
+            "description": "Testing report verification",
+        },
+    )
+
+    assert create_response.status_code == 201
+    report_id = create_response.json()["report_id"]
+
+    response = client.patch(
+        f"/api/reports/{report_id}/verification",
+        json={"verification_status": "VERIFIED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "VERIFIED"
+
+
+def test_reject_flood_report():
+    """Verify that a report can be marked as rejected."""
+
+    create_response = client.post(
+        "/api/reports",
+        json={
+            "report_type": "COMMUNITY",
+            "location": "Rejection Test Village",
+            "description": "Testing report rejection",
+        },
+    )
+
+    assert create_response.status_code == 201
+    report_id = create_response.json()["report_id"]
+
+    response = client.patch(
+        f"/api/reports/{report_id}/verification",
+        json={"verification_status": "REJECTED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["verification_status"] == "REJECTED"
+
+
+def test_verify_nonexistent_flood_report():
+    """Verify that an unknown report ID returns HTTP 404."""
+
+    response = client.patch(
+        "/api/reports/UNKNOWN-REPORT/verification",
+        json={"verification_status": "VERIFIED"},
+        headers={"x-operator-api-key": os.environ["AQUAGAUGE_OPERATOR_API_KEY"]},
+    )
+
+    assert response.status_code == 404
