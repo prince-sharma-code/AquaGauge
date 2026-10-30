@@ -1,0 +1,234 @@
+
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: Inter, Arial, sans-serif;
+  background: #090B10;
+  color: #E8EDF5;
+}
+
+html {
+  background: #090B10;
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: #090B10;
+  color: #E8EDF5;
+  font-family: Inter, Arial, sans-serif;
+}
+
+/* Midnight Black surfaces */
+[class*="bg-[#F0EBF0]"],
+[class*="bg-[#FFFFFF]"],
+[class*="bg-white"],
+[class*="bg-[#FCFAFC]"],
+[class*="bg-[#FAF8FB]"],
+[class*="bg-[#F8F5F8]"],
+[class*="bg-[#F6F2FA]"] {
+  background-color: #191E28 !important;
+  color: #E8EDF5;
+}
+
+/* Dark elevated surfaces */
+[class*="bg-[#DCEFEB]"],
+[class*="bg-[#E9E2F5]"],
+[class*="bg-[#F0F8F6]"],
+[class*="bg-[#E3EAF3]"] {
+  background-color: #202735 !important;
+}
+
+/* Electric Coral Blue accents */
+[class*="text-[#287E83]"],
+[class*="text-[#244A69]"],
+[class*="text-[#7664A8]"],
+[class*="text-[#51447C]"] {
+  color: #19BFFF !important;
+}
+
+[class*="bg-[#287E83]"],
+[class*="bg-[#F2A58B]"] {
+  background-color: #19BFFF !important;
+  color: #090B10 !important;
+}
+
+/* Acid Lime success accents */
+[class*="text-[#6DBDB4]"],
+[class*="text-[#287E83]"] {
+  color: #C6FF3D;
+}
+
+[class*="bg-[#6DBDB4]"] {
+  background-color: #C6FF3D !important;
+}
+
+/* High-risk alerts */
+[class*="text-[#B34E43]"],
+[class*="text-[#D77F69]"] {
+  color: #FF5D68 !important;
+}
+
+[class*="bg-[#FDF0EC]"] {
+  background-color: #321E24 !important;
+}
+
+/* Medium-risk alerts */
+[class*="text-[#A87323]"],
+[class*="text-[#8A682F]"] {
+  color: #FFB454 !important;
+}
+
+[class*="bg-[#FFF6E7]"] {
+  background-color: #30271B !important;
+}
+
+/* Muted text */
+[class*="text-[#71808A]"] {
+  color: #A5ACB8 !important;
+}
+
+/* Borders */
+[class*="border-[#E7E0E9]"],
+[class*="border-[#DCD3E4]"],
+[class*="border-[#B9A8E8]"],
+[class*="border-[#B8DED8]"] {
+  border-color: #343A45 !important;
+}
+
+/* Form controls */
+input,
+textarea,
+select {
+  background-color: #202735;
+  color: #E8EDF5;
+  border-color: #343A45;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #A5ACB8;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #19BFFF;
+}
+
+/* Dropdown options */
+option {
+  background: #191E28;
+  color: #E8EDF5;
+}
+
+/* Dashboard cards */
+[class*="rounded-2xl"][class*="shadow"] {
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25);
+}
+
+/* Chart tooltips */
+.recharts-default-tooltip {
+  background-color: #191E28 !important;
+  border: 1px solid #343A45 !important;
+  border-radius: 12px;
+  color: #E8EDF5 !important;
+}
+
+.recharts-tooltip-label,
+.recharts-tooltip-item {
+  color: #E8EDF5 !important;
+}
+
+/* Leaflet map popup */
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  background: #191E28;
+  color: #E8EDF5;
+}
+
+.leaflet-popup-content {
+  color: #E8EDF5;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090B10;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #343A45;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #19BFFF;
+}
+
+/* Make Acid Lime the primary dashboard accent */
+:root {
+  --acid-lime: #C6FF3D;
+  --lime-soft: #A9E82F;
+  --lime-surface: #26351A;
+  --electric-blue: #19BFFF;
+}
+
+/* Primary buttons and active navigation */
+button[class*="bg-[#F2A58B]"],
+button[class*="bg-[#287E83]"],
+button[class*="bg-[#244A69]"],
+[class*="bg-[#F2A58B]"] {
+  background-color: var(--acid-lime) !important;
+  color: #090B10 !important;
+}
+
+/* Green text and icons */
+[class*="text-[#6DBDB4]"],
+[class*="text-[#287E83]"],
+.text-green-500,
+.text-emerald-500 {
+  color: var(--acid-lime) !important;
+}
+
+/* Green-tinted panels */
+[class*="bg-[#DCEFEB]"],
+[class*="bg-[#F0F8F6]"],
+[class*="bg-[#B8DED8]"] {
+  background-color: var(--lime-surface) !important;
+}
+
+/* Green borders and focus states */
+[class*="border-[#B8DED8]"],
+[class*="border-[#6DBDB4]"] {
+  border-color: #668C2A !important;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--acid-lime) !important;
+  box-shadow: 0 0 0 2px rgba(198, 255, 61, 0.12);
+}
+
+/* Green hover effects */
+button:hover {
+  border-color: var(--acid-lime);
+}
+
+/* Green selection */
+::selection {
+  background: var(--acid-lime);
+  color: #090B10;
+}
