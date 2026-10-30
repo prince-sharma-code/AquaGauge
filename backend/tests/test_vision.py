@@ -809,20 +809,32 @@ def test_pipeline_error_handling_and_fallback():
 # Milestone 6 Integration Tests
 # ==========================================
 
+
 def test_pipeline_operator_override_flow():
-    """Verify that operator polygon and waterline override take precedence and set SUCCESS."""
+    """Verify operator overrides when YOLO weights are available."""
+
+    try:
+        detector = VehicleDetector()
+    except FileNotFoundError:
+        pytest.skip("YOLO11n weights are not available")
+
     pipeline = VisionPipeline(
-        detector=VehicleDetector(),
+        detector=detector,
         segmenter=FloodwaterSegmenter(),
         waterline_extractor=WaterlineExtractor(),
     )
-    img_path = "assets/demo_images/waterlogged_road_vehicle.jpg"
-    full_path = Path("C:/Users/win11/Downloads/AquaGauge") / img_path
+
+    full_path = Path("assets/demo_images/waterlogged_road_vehicle.jpg")
+
     if not full_path.is_file():
         pytest.skip("Demo image not found")
 
-    # Supply operator-confirmed polygon and waterline
-    op_poly = [(0.0, 150.0), (898.0, 150.0), (898.0, 684.0), (0.0, 684.0)]
+    op_poly = [
+        (0.0, 150.0),
+        (898.0, 150.0),
+        (898.0, 684.0),
+        (0.0, 684.0),
+    ]
     op_waterlines = {1: 180.0}
 
     res = pipeline.process(
@@ -835,6 +847,7 @@ def test_pipeline_operator_override_flow():
     assert res.status == "SUCCESS"
     assert res.water_region.method == "operator_polygon"
     assert res.water_region.confidence == 1.0
+
     cand = res.waterline_candidates[0]
     assert cand.status == "OPERATOR_CONFIRMED"
     assert cand.can_estimate is True
@@ -843,28 +856,41 @@ def test_pipeline_operator_override_flow():
 
 
 def test_pipeline_real_images_end_to_end():
-    """Verify end-to-end execution on all 3 bundled images produces valid schema outputs."""
-    pipeline = VisionPipeline()
+    """Verify end-to-end execution when YOLO weights are available."""
+
+    try:
+        pipeline = VisionPipeline()
+    except FileNotFoundError:
+        pytest.skip("YOLO11n weights are not available")
+
     images = [
-        "assets/demo_images/flooded_vehicle_underpass.jpg",
-        "assets/demo_images/waterlogged_road_vehicle.jpg",
-        "assets/demo_images/underpass_overview.jpg",
+        Path("assets/demo_images/flooded_vehicle_underpass.jpg"),
+        Path("assets/demo_images/waterlogged_road_vehicle.jpg"),
+        Path("assets/demo_images/underpass_overview.jpg"),
     ]
 
-    for img_rel in images:
-        full_path = Path("C:/Users/win11/Downloads/AquaGauge") / img_rel
-        if not full_path.is_file():
-            continue
+    if not all(img.is_file() for img in images):
+        pytest.skip("One or more demo images are missing")
 
-        res = pipeline.process(full_path, generate_annotated_image=True)
+    for img_path in images:
+        res = pipeline.process(
+            img_path,
+            generate_annotated_image=True,
+        )
+
         assert isinstance(res, VisionPipelineResult)
         assert res.image_width > 0
         assert res.image_height > 0
-        assert res.status in ("SUCCESS", "PARTIAL_ABSTAIN", "NO_DETECTION")
+        assert res.status in (
+            "SUCCESS",
+            "PARTIAL_ABSTAIN",
+            "NO_DETECTION",
+        )
         assert len(res.detections) > 0
         assert res.water_region.detected is True
         assert res.annotated_image_base64 is not None
         assert len(res.annotated_image_base64) > 1000
+
 
 
 
