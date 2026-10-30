@@ -8,8 +8,10 @@ Adheres strictly to the AquaGauge REST API Contract v1.0-FINAL:
 """
 from typing import List, Optional, Union
 import json
+from io import BytesIO
+from PIL import Image, UnidentifiedImageError
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, status, Query, Request, Header, Depends
+from fastapi import FastAPI, HTTPException, status, Query, Request, Header, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 
 from .depth_estimator import estimate_depth_cm
@@ -48,7 +50,7 @@ from .database import (
 
 from .route_service import get_corridor_metadata, get_route_detour
 import os
-
+MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 OPERATOR_API_KEY = os.getenv("AQUAGAUGE_OPERATOR_API_KEY")
 
@@ -57,6 +59,11 @@ if not OPERATOR_API_KEY:
         "AQUAGAUGE_OPERATOR_API_KEY environment variable must be set."
     )
 import secrets
+from .vision import VisionPipeline
+
+vision_pipeline = None
+vision_status = "UNAVAILABLE"
+vision_error = None
 
 
 def require_operator_api_key(
@@ -73,8 +80,22 @@ def require_operator_api_key(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize SQLite database before serving requests
+    global vision_pipeline, vision_status, vision_error
+
+    # Initialize SQLite database
     init_db()
+
+    # Initialize vision without preventing API startup
+    try:
+        vision_pipeline = VisionPipeline()
+        vision_status = "AVAILABLE"
+        vision_error = None
+    except Exception as exc:
+        vision_pipeline = None
+        vision_status = "UNAVAILABLE"
+        vision_error = str(exc)
+        print(f"Vision pipeline unavailable: {exc}")
+
     yield
 
 app = FastAPI(
@@ -104,6 +125,11 @@ def health():
         "service": "aquagauge-hackathon-api",
         "mode": "prototype",
         "version": "0.1.0",
+        "vision": {
+            "status": vision_status,
+            "error": vision_error,
+            "precomputed_demo_available": True,
+        },
     }
 
 
@@ -342,10 +368,34 @@ async def detect(request: Request):
     if "multipart/form-data" in content_type:
         form = await request.form()
         uploaded_file = form.get("file")
-        if not uploaded_file:
+
+        if uploaded_file is None or not hasattr(uploaded_file, "read"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Form field 'file' must contain an uploaded image.",
+            )
+
+        file_bytes = await uploaded_file.read(MAX_UPLOAD_SIZE_BYTES + 1)
+
+        if len(file_bytes) > MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Image exceeds the 10 MB upload limit.",
+            )
+
+        if not file_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded image is empty.",
+            )
+        try:
+            image = Image.open(BytesIO(file_bytes))
+            image.load()
+            image = image.convert("RGB")
+        except (UnidentifiedImageError, OSError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Uploaded file is not a valid image.",
             )
         if getattr(uploaded_file, "content_type", "") not in ["image/jpeg", "image/png", "image/webp"]:
             raise HTTPException(

@@ -190,13 +190,12 @@ def test_detect_endpoint_unsupported_image_returns_404():
     res = client.post("/api/detect", json={"image_id": "arbitrary_unseen.jpg"})
     assert res.status_code == 404
 
-
-def test_detect_endpoint_upload_returns_501():
+def test_detect_endpoint_upload_rejects_invalid_image():
     files = {"file": ("test.png", b"fakebytes", "image/png")}
     res = client.post("/api/detect", files=files)
-    assert res.status_code == 501
-    assert "Live vision model inference" in res.json()["detail"]
 
+    assert res.status_code == 400
+    assert res.json()["detail"] == "Uploaded file is not a valid image."
 
 def test_incident_creation_and_retrieval_flow():
     # 1. Produce valid estimate
