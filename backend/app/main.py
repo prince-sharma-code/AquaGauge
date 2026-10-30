@@ -30,14 +30,20 @@ from .models import (
     BoundingBoxPixels,
     SuggestedReference,
     WaterBoundary,
+    FloodReportCreate,
+    FloodReportResponse,
 )
+
 from .database import (
     init_db,
     create_incident_atomic,
     get_recent_incidents,
     DuplicateIncidentError,
     AbstainedIncidentError,
+    create_flood_report,
+    get_flood_reports,
 )
+
 from .route_service import get_corridor_metadata, get_route_detour
 
 @asynccontextmanager
@@ -209,7 +215,25 @@ def create_incident(payload: IncidentCreateRequest):
             status_code=status.HTTP_409_CONFLICT,
             detail=str(exc),
         )
+@app.post(
+    "/api/reports",
+    response_model=FloodReportResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit a multi-source flood report",
+)
+def submit_flood_report(payload: FloodReportCreate):
+    return create_flood_report(request=payload)
 
+
+@app.get(
+    "/api/reports",
+    response_model=List[FloodReportResponse],
+    summary="Retrieve recent multi-source flood reports",
+)
+def list_flood_reports(
+    limit: int = Query(default=50, ge=1, le=100)
+):
+    return get_flood_reports(limit=limit)
 
 # Allowlist for starter-kit bundled demo images
 _DEMO_PRESETS = {

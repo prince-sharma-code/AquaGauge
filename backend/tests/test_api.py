@@ -353,4 +353,33 @@ def test_estimate_session_expiry_60_minutes():
     res = client.post("/api/incidents", json=inc_payload)
     assert res.status_code == 404
     assert "not found or expired" in res.json()["detail"]
+def test_create_manual_flood_report():
+    """Verify that a manual flood report can be submitted successfully."""
 
+    payload = {
+        "report_type": "MANUAL",
+        "location": "Test Village",
+        "description": "Flooding reported near the village road",
+        "reported_severity": "HIGH",
+        "latitude": 28.6139,
+        "longitude": 77.2090,
+    }
+
+    response = client.post("/api/reports", json=payload)
+
+    assert response.status_code == 201
+
+    data = response.json()
+    assert data["report_type"] == "MANUAL"
+    assert data["location"] == "Test Village"
+    assert data["verification_status"] == "UNVERIFIED"
+    assert data["reported_severity"] == "HIGH"
+
+
+def test_get_flood_reports():
+    """Verify that submitted flood reports can be retrieved."""
+
+    response = client.get("/api/reports")
+
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)

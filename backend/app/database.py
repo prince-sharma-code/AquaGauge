@@ -1,10 +1,20 @@
 """SQLite storage manager for incident logging with transactional duplicate prevention."""
+
 import sqlite3
 import datetime
+import uuid
+
 from pathlib import Path
 from typing import List, Optional
-from .models import IncidentResponse, IncidentCreateRequest
+
+from .models import (
+    IncidentResponse,
+    IncidentCreateRequest,
+    FloodReportCreate,
+    FloodReportResponse,
+)
 from .session_store import EstimateSession, SessionStore
+
 
 # Ensure local data directory exists inside backend/data/ (ignored by git)
 _DB_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -56,6 +66,43 @@ def init_db() -> None:
             ON incidents(timestamp DESC);
             """
         )
+        
+        # Multi-source flood reports table
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS reports (
+                report_id TEXT PRIMARY KEY,
+                report_type TEXT NOT NULL,
+                location TEXT NOT NULL,
+                latitude REAL,
+                longitude REAL,
+                description TEXT NOT NULL,
+                reported_severity TEXT NOT NULL DEFAULT 'UNKNOWN',
+                verification_status TEXT NOT NULL DEFAULT 'UNVERIFIED',
+                image_id TEXT,
+                water_level_cm REAL,
+                rainfall_mm REAL,
+                observed_at TEXT,
+                reporter_notes TEXT,
+                submitted_at TEXT NOT NULL,
+                CHECK (report_type IN (
+                    'IMAGE', 'MANUAL', 'COMMUNITY', 'RAINFALL',
+                    'WATER_LEVEL', 'SATELLITE', 'SMS', 'OFFLINE'
+                )),
+                CHECK (verification_status IN (
+                    'UNVERIFIED', 'VERIFIED', 'REJECTED'
+                ))
+            );
+            """
+        )
+
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_reports_submitted_at
+            ON reports(submitted_at DESC);
+            """
+        )
+
         conn.commit()
 
 
@@ -190,3 +237,90 @@ def get_recent_incidents(limit: int = 50) -> List[IncidentResponse]:
         ]
     finally:
         conn.close()
+
+
+def create_flood_report(request: FloodReportCreate) -> FloodReportResponse:
+    """Save a multi-source flood report in SQLite."""
+
+    init_db()
+
+    report_id = f"RPT-{uuid.uuid4().hex[:12].upper()}"
+    submitted_at = datetime.datetime.now(
+        datetime.timezone.utc
+    ).isoformat()
+
+    with get_db_connection() as conn:
+        conn.execute(
+            """
+            INSERT INTO reports (
+                report_id,
+                report_type,
+                location,
+                latitude,
+                longitude,
+                description,
+                reported_severity,
+                verification_status,
+                image_id,
+                water_level_cm,
+                rainfall_mm,
+                observed_at,
+                reporter_notes,
+                submitted_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """,
+            (
+                report_id,
+                request.report_type,
+                request.location,
+                request.latitude,
+                request.longitude,
+                request.description,
+                request.reported_severity or "UNKNOWN",
+                "UNVERIFIED",
+                request.image_id,
+                request.water_level_cm,
+                request.rainfall_mm,
+                request.observed_at,
+                request.reporter_notes,
+                submitted_at,
+            ),
+        )
+
+    return FloodReportResponse(
+        report_id=report_id,
+        report_type=request.report_type,
+        location=request.location,
+        latitude=request.latitude,
+        longitude=request.longitude,
+        description=request.description,
+        reported_severity=request.reported_severity or "UNKNOWN",
+        verification_status="UNVERIFIED",
+        image_id=request.image_id,
+        water_level_cm=request.water_level_cm,
+        rainfall_mm=request.rainfall_mm,
+        observed_at=request.observed_at,
+        reporter_notes=request.reporter_notes,
+        submitted_at=submitted_at,
+    )
+
+def get_flood_reports(limit: int = 100) -> List[FloodReportResponse]:
+    """Retrieve recent multi-source flood reports from SQLite."""
+
+    init_db()
+
+    with get_db_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM reports
+            ORDER BY submitted_at DESC
+            LIMIT ?;
+            """,
+            (limit,),
+        ).fetchall()
+
+    return [
+        FloodReportResponse(**dict(row))
+        for row in rows
+    ]
