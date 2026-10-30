@@ -1,0 +1,22 @@
+{
+  "notice": "Illustrative hackathon demo defaults only. These are not engineering standards or real-world safety guidance.",
+  "depth_bands_cm": {
+    "caution_from": 8,
+    "high_risk_from": 25,
+    "closure_review_from": 40
+  },
+  "vehicles": {
+    "two_wheeler": {
+      "high_risk_from_cm": 8,
+      "blocked_from_cm": 25
+    },
+    "light_vehicle": {
+      "caution_from_cm": 8,
+      "high_risk_from_cm": 25,
+      "blocked_from_cm": 40
+    },
+    "higher_clearance": {
+      "human_review_required": true
+    }
+  }
+}

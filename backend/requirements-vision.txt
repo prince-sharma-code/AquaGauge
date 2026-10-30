@@ -1,0 +1,3 @@
+-r requirements-core.txt
+# Optional; installs a PyTorch-dependent stack and downloads model weights on first use.
+ultralytics>=8.3

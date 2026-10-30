@@ -1,0 +1,1 @@
+"""AquaGauge hackathon backend."""

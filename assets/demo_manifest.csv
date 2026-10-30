@@ -1,0 +1,4 @@
+filename,source,rights,scenario,reference_height_cm,waterline_status,expected_demo_status
+underpass_overview.jpg,Extracted from team deck,Source/licence not recorded in PPTX metadata,flooded underpass,,operator-confirmed,review before publishing
+flooded_vehicle_underpass.jpg,Extracted from team deck,Source/licence not recorded in PPTX metadata,flooded vehicle in underpass,,operator-confirmed,review before publishing
+waterlogged_road_vehicle.jpg,Extracted from team deck,Source/licence not recorded in PPTX metadata,waterlogged roadway with vehicle,,operator-confirmed,review before publishing

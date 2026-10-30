@@ -1,0 +1,50 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python caches and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Frontend dependencies and build outputs
+node_modules/
+dist/
+build/
+.next/
+coverage/
+
+# Model weights and artifacts
+models/
+weights/
+runs/
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Datasets, raw/processed data, and large archives
+datasets/
+data/
+processed/
+raw/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# OS and IDE files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
